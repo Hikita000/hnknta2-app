@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -22,12 +23,37 @@ public class MainActivity extends AppCompatActivity {
     private SwipeRefreshLayout swipeRefresh;
     private static final String SITE_URL = "https://nikita2.pp.ua/";
 
+    // Мост между JavaScript сайта и нативной системой Android
+    public class WebAppInterface {
+        Context mContext;
+
+        WebAppInterface(Context c) {
+            mContext = c;
+        }
+
+        @JavascriptInterface
+        public void share(String title, String text, String url) {
+            try {
+                Intent sendIntent = new Intent();
+                sendIntent.setAction(Intent.ACTION_SEND);
+                sendIntent.putExtra(Intent.EXTRA_TITLE, title);
+                sendIntent.putExtra(Intent.EXTRA_TEXT, title + "\n\n" + text + "\n" + url);
+                sendIntent.setType("text/plain");
+
+                Intent shareIntent = Intent.createChooser(sendIntent, "Поділитися через");
+                mContext.startActivity(shareIntent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Красим шторку телефона в стильный цвет темы #09090b
+        // Черный статус-бар в стиле приложения
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.parseColor("#09090b"));
         }
@@ -35,14 +61,16 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh = findViewById(R.id.swipeRefresh);
         webView = findViewById(R.id.webView);
 
-        // Настройка кэша и WebView
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
 
-        // ЖЕЛЕЗНЫЙ ОФФЛАЙН: если нет сети — берем всё из памяти телефона!
+        // Подключаем мост под именем AndroidApp
+        webView.addJavascriptInterface(new WebAppInterface(this), "AndroidApp");
+
+        // Офлайн-кэш: если нет интернета, грузим сохраненное из памяти
         if (isNetworkConnected()) {
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         } else {
@@ -59,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Если ссылка на Telegram или внешняя — открываем в нужном приложении
+                // Внешние ссылки и Telegram открываем в родных приложениях
                 if (url.startsWith("https://t.me/") || url.startsWith("tg://") || !url.contains("nikita2.pp.ua")) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -73,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Свайп вниз для перезагрузки страницы
+        // Свайп вниз для перезагрузки
         swipeRefresh.setOnRefreshListener(() -> {
             if (isNetworkConnected()) {
                 webView.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -93,7 +121,6 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    // Родная кнопка «Назад» на телефоне
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
